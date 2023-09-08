@@ -1,2 +1,4 @@
 com.ruoyi.common.redis.configure.RedisConfig
+com.ruoyi.common.redis.configure.RedissionConfig
 com.ruoyi.common.redis.service.RedisService
+com.ruoyi.common.redis.listener.RedisKeyExpirationListener

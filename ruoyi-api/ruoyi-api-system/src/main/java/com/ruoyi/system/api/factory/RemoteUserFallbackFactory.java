@@ -36,6 +36,11 @@ public class RemoteUserFallbackFactory implements FallbackFactory<RemoteUserServ
             {
                 return R.fail("注册用户失败:" + throwable.getMessage());
             }
+
+            @Override
+            public R<Boolean> expirationKey(String key, String source) {
+                return R.fail("缓存过期，刷新失败");
+            }
         };
     }
 }

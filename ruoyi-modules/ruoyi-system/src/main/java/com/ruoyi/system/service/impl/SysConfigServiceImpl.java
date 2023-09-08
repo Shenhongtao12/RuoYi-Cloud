@@ -1,10 +1,5 @@
 package com.ruoyi.system.service.impl;
 
-import java.util.Collection;
-import java.util.List;
-import javax.annotation.PostConstruct;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
 import com.ruoyi.common.core.constant.CacheConstants;
 import com.ruoyi.common.core.constant.UserConstants;
 import com.ruoyi.common.core.exception.ServiceException;
@@ -14,12 +9,24 @@ import com.ruoyi.common.redis.service.RedisService;
 import com.ruoyi.system.domain.SysConfig;
 import com.ruoyi.system.mapper.SysConfigMapper;
 import com.ruoyi.system.service.ISysConfigService;
+import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RBucket;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.PostConstruct;
+import java.util.Collection;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 参数配置 服务层实现
  * 
  * @author ruoyi
  */
+@Slf4j
 @Service
 public class SysConfigServiceImpl implements ISysConfigService
 {
@@ -28,6 +35,9 @@ public class SysConfigServiceImpl implements ISysConfigService
 
     @Autowired
     private RedisService redisService;
+
+    @Autowired
+    private RedissonClient redissonClient;
 
     /**
      * 项目启动时，初始化参数到缓存
@@ -198,6 +208,60 @@ public class SysConfigServiceImpl implements ISysConfigService
             return UserConstants.NOT_UNIQUE;
         }
         return UserConstants.UNIQUE;
+    }
+
+    public boolean deductionInventory(String name) {
+        SysConfig sysConfig2 = configMapper.selectConfigById(102L);
+        log.info(name + "没有加锁时库存：" + sysConfig2.getConfigValue());
+        if (Integer.parseInt(sysConfig2.getConfigValue()) <= 0) {
+            log.info(name + "=============库存不足=============");
+            return false;
+        }
+        RLock lock = redissonClient.getLock("Sys.InventoryCount");
+        try {
+            log.info(name + "  ----准备获取锁----");
+            lock.tryLock(1,TimeUnit.SECONDS);
+            boolean isLocked = lock.tryLock(4, 20, TimeUnit.SECONDS);
+            if (isLocked) {
+                long round = Math.round(Math.random() * 2);
+                log.info(name + "  -----锁住----- 等待时间：" + round);
+                Thread.sleep(round * 1000);
+
+                SysConfig sysConfig1 = configMapper.selectConfigById(102L);
+                log.info(name + "加锁后真实库存：" + sysConfig1.getConfigValue());
+                if (Integer.parseInt(sysConfig1.getConfigValue()) <= 0) {
+                    log.info(name + "=============库存不足=============");
+                    if (lock.isHeldByCurrentThread()) {
+                        lock.unlock();
+                    }
+                    return false;
+                }
+                SysConfig sysConfig = new SysConfig();
+                sysConfig.setConfigId(102L);
+                sysConfig.setConfigValue(String.valueOf(Integer.parseInt(sysConfig1.getConfigValue()) - 1));
+                configMapper.updateConfig(sysConfig);
+                log.info(name + "扣减库存: " + (Integer.parseInt(sysConfig1.getConfigValue()) - 1));
+                if (lock.isHeldByCurrentThread()) {
+                    lock.unlock();
+                }
+                return true;
+            }
+        } catch (Exception e) {
+            lock.unlock();
+            throw new RuntimeException(e);
+        }
+        return false;
+    }
+
+    private void testRedisson() {
+        String key = "test_redisson";
+        RBucket<SysConfig> bucket = redissonClient.getBucket(key);
+        SysConfig sysConfig = new SysConfig();
+        bucket.set(sysConfig);
+
+        RBucket<SysConfig> bucket1 = redissonClient.getBucket(key);
+
+        SysConfig andDelete = bucket1.getAndDelete();
     }
 
     /**

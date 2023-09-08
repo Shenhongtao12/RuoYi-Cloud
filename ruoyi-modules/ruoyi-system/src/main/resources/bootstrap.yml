@@ -23,3 +23,15 @@ spring:
         # 共享配置
         shared-configs:
           - application-${spring.profiles.active}.${spring.cloud.nacos.config.file-extension}
+
+easy-query:
+  enable: true
+  database: mysql
+  name-conversion: underlined
+  delete-throw: true
+  print-sql: true
+
+logging:
+  #   #修改日记级别，启用SQL插件，查看SQL
+  level:
+    com.ruoyi.system.mapper: debug
